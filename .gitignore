@@ -8,3 +8,5 @@
 
 getDevJob.py
 .env
+job_search_results/
+job_search.py

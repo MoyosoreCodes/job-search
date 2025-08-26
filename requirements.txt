@@ -1,0 +1,7 @@
+pdfplumber
+requests
+python-dotenv
+openai
+python-docx
+pandas
+openpyxl
