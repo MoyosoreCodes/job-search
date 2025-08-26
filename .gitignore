@@ -7,3 +7,4 @@
 *.XLSX
 
 getDevJob.py
+.env

@@ -8,82 +8,73 @@ from datetime import datetime
 import re
 import os
 from collections import Counter
+from urllib.parse import quote
 
 # Please install the pdfplumber library: pip install pdfplumber
 import pdfplumber
+
+# Load environment variables
+from dotenv import load_dotenv
+load_dotenv()
 
 # --- CONFIGURATION ---
 OUTPUT_FILENAME = "job_search_results.xlsx"
 
 def get_user_configuration():
-    """Get API key and CV path from user input."""
+    """Get API key and CV path from environment variables first, then user input."""
     print("=== INITIAL SETUP ===")
     
-    # Get SerpAPI key
-    print("\n1. SerpAPI Key Required")
-    print("   - Visit: https://serpapi.com/")
-    print("   - Sign up for a free account")
-    print("   - Get your API key from the dashboard")
+    # Try to get SerpAPI key from environment variables first
+    api_key = os.getenv('SERPAPI_KEY') or os.getenv('SERP_API_KEY')
     
-    api_key = input("\nEnter your SerpAPI key: ").strip()
-    if not api_key:
-        print("❌ API key is required to search for jobs.")
-        return None, None
+    if api_key:
+        print(f"✅ Found SerpAPI key in environment variables: {api_key[:8]}...")
+    else:
+        print("\n1. SerpAPI Key Required")
+        print("   - Visit: https://serpapi.com/")
+        print("   - Sign up for a free account")
+        print("   - Get your API key from the dashboard")
+        print("   - You can also add it to your .env file as SERPAPI_KEY=your_key_here")
+        
+        api_key = input("\nEnter your SerpAPI key: ").strip()
+        if not api_key:
+            print("❌ API key is required to search for jobs.")
+            return None, None
     
-    # Get CV path
-    print("\n2. CV File Path")
-    print("   - Provide the full path to your CV PDF file")
-    print("   - Example: C:\\Users\\username\\Documents\\my_cv.pdf")
-    print("   - Or: /Users/username/Documents/my_cv.pdf (Mac/Linux)")
+    # Try to get CV path from environment variables first
+    cv_path = os.getenv('CV_PATH') or os.getenv('CV_FILE_PATH')
     
-    cv_path = input("\nEnter the path to your CV PDF file: ").strip()
+    if cv_path:
+        print(f"✅ Found CV path in environment variables: {cv_path}")
+        # Validate file exists
+        if not os.path.exists(cv_path):
+            print(f"❌ CV file not found at environment path: {cv_path}")
+            print("Please update your .env file or provide a new path.")
+            cv_path = None
+    
     if not cv_path:
-        print("❌ CV file path is required.")
-        return None, None
-    
-    # Validate file exists
-    if not os.path.exists(cv_path):
-        print(f"❌ File not found at: {cv_path}")
-        print("Please check the path and try again.")
-        return None, None
+        print("\n2. CV File Path")
+        print("   - Provide the full path to your CV PDF file")
+        print("   - Example: C:\\Users\\username\\Documents\\my_cv.pdf")
+        print("   - Or: /Users/username/Documents/my_cv.pdf (Mac/Linux)")
+        print("   - You can also add it to your .env file as CV_PATH=path/to/your/cv.pdf")
+        
+        cv_path = input("\nEnter the path to your CV PDF file: ").strip()
+        if not cv_path:
+            print("❌ CV file path is required.")
+            return None, None
+        
+        # Validate file exists
+        if not os.path.exists(cv_path):
+            print(f"❌ File not found at: {cv_path}")
+            print("Please check the path and try again.")
+            return None, None
     
     print(f"✅ Configuration complete!")
     print(f"   API Key: {api_key[:8]}...")
     print(f"   CV File: {cv_path}")
     
     return api_key, cv_path
-
-# Fallback skills list - only used for validation and supplementation
-# FALLBACK_SKILLS_LIST = [
-#     # Programming Languages
-#     "python", "java", "javascript", "typescript", "go", "golang", "c#", ".net", 
-#     "node.js", "nodejs", "php", "ruby", "swift", "kotlin", "rust", "scala",
-    
-#     # Frontend Technologies
-#     "react", "vue", "angular", "nextjs", "next.js", "svelte", "html", "css", 
-#     "tailwind", "bootstrap", "sass", "scss",
-    
-#     # Backend Frameworks
-#     "express.js", "express", "nestjs", "django", "flask", "spring boot", 
-#     "spring", "ruby on rails", "fastapi", "gin", "fiber",
-    
-#     # Databases
-#     "postgresql", "postgres", "mongodb", "mysql", "redis", "elasticsearch", 
-#     "cassandra", "dynamodb", "oracle", "sqlite", "nosql", "sql",
-    
-#     # Cloud & DevOps
-#     "aws", "azure", "google cloud", "gcp", "docker", "kubernetes", "k8s",
-#     "jenkins", "github actions", "gitlab ci", "terraform", "ansible",
-#     "ci/cd", "devops", "microservices",
-    
-#     # AI/ML & Data
-#     "machine learning", "data science", "tensorflow", "pytorch", "scikit-learn", 
-#     "pandas", "numpy", "data analysis", "ai", "artificial intelligence",
-    
-#     # Other Technologies
-#     "git", "rest api", "graphql", "jwt", "oauth", "websockets", "grpc",
-#     "kafka", "rabbitmq", "nginx", "apache"
-# ]
 
 # Visa sponsorship keywords to prioritize
 VISA_KEYWORDS = [
@@ -406,11 +397,21 @@ def extract_job_link(job):
     return job.get("link", "Not available")
 
 def get_glassdoor_link(company_name):
-    """Generate Glassdoor link for company research."""
+    """Generate Glassdoor search link for company research."""
     if not company_name:
         return "Not available"
-    safe_name = company_name.replace(" ", "-").replace("&", "and")
-    return f"https://www.glassdoor.com/Reviews/{safe_name}-Reviews-E.htm"
+    
+    # Clean the company name for search
+    clean_name = company_name.strip()
+    # Remove common business suffixes for better search results
+    clean_name = re.sub(r'\s*(Inc\.?|LLC\.?|Corp\.?|Corporation|Ltd\.?|Limited|Co\.?)(\s|$)', '', clean_name, flags=re.IGNORECASE)
+    
+    # URL encode the company name for the search query
+    encoded_name = quote(clean_name.strip())
+    
+    # Generate Glassdoor search URL - much more reliable than trying to guess company page URLs
+    search_url = f"https://www.glassdoor.com/Reviews/company-reviews.htm?suggestCount=0&suggestChosen=false&clickSource=searchBtn&typedKeyword={encoded_name}"
+    return search_url
 
 def format_job_data(job, query, score, score_reasons):
     """Format job data for output with enhanced fields."""
@@ -429,9 +430,31 @@ def format_job_data(job, query, score, score_reasons):
         "Company Glassdoor": get_glassdoor_link(job.get("company_name"))
     }
 
+def create_results_folder():
+    """Create a folder with current date for storing results."""
+    # Create human-readable date folder name
+    current_date = datetime.now()
+    folder_name = current_date.strftime('%B_%d_%Y')  # e.g., "December_25_2024"
+    
+    # Create the full folder path
+    results_folder = os.path.join('job_search_results', folder_name)
+    
+    # Create the folder if it doesn't exist
+    os.makedirs(results_folder, exist_ok=True)
+    
+    return results_folder
+
 def main():
     """Enhanced main function with user preferences and better filtering."""
     print("=== AI-Powered Job Search with Visa Sponsorship Priority ===\n")
+    
+    # Check if .env file exists and inform user
+    env_exists = os.path.exists('.env')
+    if not env_exists:
+        print("💡 Tip: Create a .env file in this directory with:")
+        print("   SERPAPI_KEY=your_serpapi_key_here")
+        print("   CV_PATH=/path/to/your/cv.pdf")
+        print("   This will save you time on future runs!\n")
     
     # Get user configuration
     api_key, cv_path = get_user_configuration()
@@ -498,16 +521,20 @@ def main():
     df = pd.DataFrame(all_jobs)
     df = df.sort_values(['Relevance Score', 'Posting Date'], ascending=[False, False])
     
-    # Save to Excel
+    # Create results folder and save file
+    results_folder = create_results_folder()
     output_filename = f"job_search_result_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-    df.to_excel(output_filename, index=False, engine='openpyxl')
+    output_path = os.path.join(results_folder, output_filename)
+    
+    df.to_excel(output_path, index=False, engine='openpyxl')
     
     # Print summary
     print(f"\n=== SEARCH RESULTS ===")
     print(f"Total jobs found: {len(df)}")
     print(f"Jobs with explicit visa sponsorship: {len(df[df['Visa Sponsorship Mentioned'] == 'Yes'])}")
     print(f"Jobs in sponsor-friendly locations: {len(df[df['Visa Sponsorship Mentioned'] == 'Maybe'])}")
-    print(f"Results saved to: {output_filename}")
+    print(f"Results folder: {results_folder}")
+    print(f"Results saved to: {output_path}")
     
     # Show top 5 results
     print(f"\n=== TOP 5 MATCHES ===")
