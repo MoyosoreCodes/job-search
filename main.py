@@ -1,66 +1,95 @@
-# main.py
-from config.config import Config
+import sys
+from config.config import AppConfig
 from cv.cv_processor import CVProcessor
 from jobs.job_searcher import JobSearcher
+from jobs.queries import QueryBuilder
+from jobs.scoring import JobScorer
 from letters.cover_letter_generator import CoverLetterGenerator
 from storage.excel_handler import ExcelHandler
-from storage.file_utils import create_results_folder
+from storage.file_utils import FileUtils
 
 
-def main():
-    print("=== AI-Powered Job Search with Visa Sponsorship Priority ===\n")
+class JobSearchApp:
+    def __init__(self):
+        self.config = AppConfig()
+        self.cv_processor = CVProcessor()
+        self.job_searcher = JobSearcher(self._get_serpapi_key())
+        self.query_builder = QueryBuilder()
+        self.excel_handler = ExcelHandler(self.config.RESULTS_DIR)
+        self.cover_letter_generator = CoverLetterGenerator(self._get_openai_key())
+        self.file_utils = FileUtils()
 
-    config = Config()
-    api_keys = config.get_api_keys()
-    if not api_keys['serpapi_key'] or not api_keys['cv_path']:
-        return
+    def _get_serpapi_key(self) -> str:
+        key = self.config.serpapi_key()
+        if not key:
+            key = input("Enter your SerpAPI key: ").strip()
+        return key
 
-    cv_processor = CVProcessor(api_keys['cv_path'])
-    cv_text = cv_processor.extract_text()
-    if not cv_text:
-        return
+    def _get_openai_key(self) -> str:
+        key = self.config.openai_key()
+        if not key:
+            key = input("Enter your OpenAI API key: ").strip()
+        return key
 
-    section_headers = cv_processor.get_section_headers()
-    resume_data = cv_processor.extract_all_sections(cv_text, section_headers)
-    if not resume_data['skills']:
-        print("No valid skills confirmed. Exiting...")
-        return
+    def _get_cv_path(self) -> str:
+        path = self.config.cv_path()
+        if not path:
+            path = input("Enter path to your CV file: ").strip()
+        return path
 
-    preferences = config.get_user_preferences()
+    def _parse_preferences(self, raw_input: str) -> list[int]:
+        """Parse user input like '1-3,5' into a list of integers [1,2,3,5]."""
+        parts = raw_input.replace(" ", "").split(",")
+        preferences = set()
+        for part in parts:
+            if "-" in part:
+                start, end = part.split("-")
+                preferences.update(range(int(start), int(end) + 1))
+            else:
+                preferences.add(int(part))
+        return sorted(preferences)
 
-    job_searcher = JobSearcher(api_keys['serpapi_key'])
-    jobs_data = job_searcher.search_jobs(resume_data['skills'], preferences)
-    if not jobs_data:
-        print("No matching jobs found. Try adjusting your preferences or CV skills.")
-        return
+    def run(self):
+        print("AI-Powered Job Search")
 
-    results_folder = create_results_folder()
+        # Step 1: Load CV and extract skills
+        cv_path = self._get_cv_path()
+        skills = self.cv_processor.extract_skills(cv_path)
+        print(f"Extracted skills: {', '.join(skills)}")
 
-    cover_letter_count = 0
-    if api_keys['openai_key']:
-        generate_letters = input("Generate cover letters for top jobs? (y/n, default: n): ").strip().lower() in ['y', 'yes']
-        if generate_letters:
-            max_letters = min(int(input("How many? (default: 5, max: 10): ").strip() or "5"), 10)
-            cl_generator = CoverLetterGenerator(api_keys['openai_key'])
-            cover_letter_count = cl_generator.generate_multiple(
-                jobs_data[:max_letters], resume_data, results_folder
-            )
+        # Step 2: Ask user for job preferences
+        print("\nChoose your job priorities (you can select multiple):")
+        print("1. Skill match priority")
+        print("2. Visa sponsorship priority")
+        print("3. Location priority")
+        print("4. Remote work priority")
+        print("5. Salary priority")
+        pref_input = "1,2,3,4,5"
+        preferences = self._parse_preferences(pref_input)
+        print(f"Preferences selected: {preferences}")
 
-    excel_handler = ExcelHandler()
-    output_path = excel_handler.save_results(jobs_data, results_folder)
+        # Step 3: Build query and search jobs
+        query = self.query_builder.build(skills)
+        jobs = self.job_searcher.search(query)
 
-    print(f"\n=== SEARCH RESULTS ===")
-    print(f"Total jobs found: {len(jobs_data)}")
-    print(f"Jobs with explicit visa sponsorship: {sum(1 for job in jobs_data if job['Visa Sponsorship Mentioned'] == 'Yes')}")
-    print(f"Cover letters generated: {cover_letter_count}")
-    print(f"Results saved to: {output_path}")
+        # Step 4: Score jobs based on chosen preferences
+        scorer = JobScorer(preferences)
+        scored_jobs = scorer.score_jobs(jobs, skills)
 
-    print(f"\n=== TOP 5 MATCHES ===")
-    for i, job in enumerate(jobs_data[:5], 1):
-        print(f"\n{i}. {job['Job Title']} at {job['Company']}")
-        print(f"   Score: {job['Relevance Score']} - {job['Location']}")
-        print(f"   Visa: {job['Visa Sponsorship Mentioned']}")
+        # Step 5: Save to Excel
+        excel_file = self.excel_handler.write(scored_jobs)
+        print(f"Results saved to {excel_file}")
+
+        # Step 6: Generate cover letters
+        for idx, job in enumerate(scored_jobs, start=1):
+            cover_letter = self.cover_letter_generator.generate(job, skills)
+            filepath = self.file_utils.save_cover_letter(job["title"], idx, cover_letter)
+            print(f"Cover letter saved: {filepath}")
 
 
 if __name__ == "__main__":
-    main()
+    app = JobSearchApp()
+    try:
+        app.run()
+    except KeyboardInterrupt:
+        sys.exit("\nProcess interrupted by user")

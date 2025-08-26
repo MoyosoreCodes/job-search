@@ -1,24 +1,45 @@
-from .queries import generate_queries, search_serpapi
-from .scoring import calculate_score, format_job
+from typing import List, Dict
+import requests
 
 class JobSearcher:
-    def __init__(self, api_key):
-        self.api_key = api_key
+    def __init__(self, serpapi_key: str):
+        self.key = serpapi_key
 
-    def search_jobs(self, skills, preferences):
-        queries = generate_queries(skills, preferences)
-        all_jobs = []
-        seen_jobs = set()
-        for query in queries:
-            jobs_raw = search_serpapi(self.api_key, query)
-            for job in jobs_raw:
-                job_id = f"{job.get('title','')}-{job.get('company_name','')}"
-                if job_id in seen_jobs:
-                    continue
-                seen_jobs.add(job_id)
-                score, reasons = calculate_score(job, skills, preferences)
-                if score <= 0:
-                    continue
-                formatted_job = format_job(job, query, score, reasons)
-                all_jobs.append(formatted_job)
-        return sorted(all_jobs, key=lambda x: x['Relevance Score'], reverse=True)
+    def search(self, queries: List[str], limit: int = 30) -> List[Dict]:
+        results: List[Dict] = []
+        for q in queries:
+            payload = {
+                "engine": "google_jobs",
+                "q": q,
+                "hl": "en",
+                "api_key": self.key
+            }
+            try:
+                r = requests.get("https://serpapi.com/search.json", params=payload, timeout=30)
+                data = r.json()
+                jobs = data.get("jobs_results", []) if isinstance(data, dict) else []
+                for j in jobs:
+                    results.append(self._map_job(j))
+                    if len(results) >= limit:
+                        return results
+            except Exception:
+                continue
+        return results
+
+    def _map_job(self, j: Dict) -> Dict:
+        return {
+            "title": j.get("title", ""),
+            "company": j.get("company_name", ""),
+            "location": j.get("location", ""),
+            "salary": j.get("detected_extensions", {}).get("salary", ""),
+            "short_description": j.get("description", "")[:500],
+            "application_link": self._first_link(j),
+            "visa_status": "",
+            "company_glassdoor_link": ""
+        }
+
+    def _first_link(self, j: Dict) -> str:
+        links = j.get("related_links") or []
+        if links and isinstance(links, list):
+            return links[0].get("link", "") or ""
+        return j.get("apply_options", [{}])[0].get("link", "") if isinstance(j.get("apply_options"), list) else ""

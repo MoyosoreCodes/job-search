@@ -1,78 +1,72 @@
-import re
-import os
-import time
-from docx import Document
-import openai
+from typing import Dict, Optional
+from pathlib import Path
+from config.config import AppConfig
+from storage.file_utils import FileUtils
 
 class CoverLetterGenerator:
-    def __init__(self, api_key):
-        self.client = openai.OpenAI(api_key=api_key)
+    def __init__(self, openai_key: str):
+        self.openai_key = openai_key
 
-    def generate_multiple(self, jobs_data, resume_data, results_folder):
-        cover_letters_folder = os.path.join(results_folder, 'cover_letters')
-        os.makedirs(cover_letters_folder, exist_ok=True)
-        count = 0
-        for job in jobs_data:
-            print(f"Generating letter for {job.get('Company')}...")
-            cover_letter, error = self._generate_letter(resume_data, job)
-            if cover_letter:
-                filepath = self._save_letter(cover_letter, job, cover_letters_folder)
-                if filepath:
-                    job['Cover Letter Generated'] = "Yes"
-                    count += 1
-                    print(f"Saved: {os.path.basename(filepath)}")
-            else:
-                print(f"Failed: {error}")
-            time.sleep(1)
-        return count
+    def generate_text(self, job: Dict, cv_snippet: Optional[str] = None) -> str:
+        if self.openai_key:
+            t = self._generate_openai(job, cv_snippet)
+            if t:
+                return t
+        return self._fallback_text(job, cv_snippet)
 
-    def _generate_letter(self, resume_data, job_data):
+    def _generate_openai(self, job: Dict, cv_snippet: Optional[str]) -> Optional[str]:
         try:
-            prompt = (
-                "Write a natural, human cover letter. Rules:\n"
-                "- Sound like a real person, not AI\n"
-                "- No em dashes at all, use regular dashes or commas\n"
-                "- Use simple, everyday language\n"
-                "- Make minor grammar imperfections but stay professional\n"
-                "- No AI phrases like \"I am excited\", \"I would love to\"\n"
-                "- Use contractions\n"
-                "- Vary sentence length\n"
-                "- Under 250 words\n\n"
-                f"RESUME INFO:\nSkills: {', '.join(resume_data.get('skills', [])[:8]) or 'Not specified'}\n"
-                f"Experience: {' | '.join(resume_data.get('experience', [])[:2]) or 'Not specified'}\n\n"
-                f"JOB:\nCompany: {job_data.get('Company', 'Not specified')}\nPosition: {job_data.get('Job Title', 'Not specified')}\n\n"
-                'Format: Start with "Dear Hiring Manager," end with "Best regards,"'
-            )
-            response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": "Write natural, human-like cover letters. Avoid AI patterns and corporate speak."},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=400,
-                temperature=0.7
-            )
-            letter = response.choices[0].message.content.strip()
-            if "—" in letter:
-                return None, "Contains em dashes"
-            if len([w for w in letter.split() if len(w) > 12]) > 3:
-                return None, "Too many complex words"
-            return letter, None
-        except Exception as e:
-            return None, f"Generation error: {str(e)}"
-
-    def _save_letter(self, letter, job_data, folder):
-        try:
-            doc = Document()
-            doc.add_heading(f"Cover Letter - {job_data.get('Company', 'Unknown')}", level=1)
-            doc.add_paragraph(f"Position: {job_data.get('Job Title', 'Not specified')}")
-            doc.add_paragraph("")
-            doc.add_paragraph(letter)
-            safe_company = re.sub(r'[^\w\s-]', '', job_data.get('Company', 'Unknown')).strip()
-            filename = f"Cover_Letter_{safe_company}.docx"
-            filepath = os.path.join(folder, filename)
-            doc.save(filepath)
-            return filepath
-        except Exception as e:
-            print(f"Save error: {e}")
+            import openai
+        except Exception:
             return None
+        prompt = []
+        title = job.get("title", "")
+        company = job.get("company", "")
+        location = job.get("location", "")
+        if title:
+            prompt.append(f"Write a professional one-page cover letter for the role: {title}.")
+        if company:
+            prompt.append(f"Company: {company}.")
+        if location:
+            prompt.append(f"Location: {location}.")
+        if cv_snippet:
+            prompt.append("Incorporate these candidate highlights:")
+            prompt.append(cv_snippet)
+        content = "\n".join(prompt).strip()
+        try:
+            if hasattr(openai, "OpenAI"):
+                client = openai.OpenAI(api_key=self.openai_key)
+                resp = client.chat.completions.create(model="gpt-3.5-turbo", messages=[{"role":"user","content":content}], max_tokens=700)
+                return resp.choices[0].message.content.strip()
+            openai.api_key = self.openai_key
+            resp = openai.ChatCompletion.create(model="gpt-3.5-turbo", messages=[{"role":"user","content":content}], max_tokens=700)
+            return resp.choices[0].message["content"].strip()
+        except Exception:
+            return None
+
+    def _fallback_text(self, job: Dict, cv_snippet: Optional[str]) -> str:
+        title = job.get("title", "the advertised position")
+        company = job.get("company", "")
+        lines = []
+        lines.append(f"Dear Hiring Team at {company}," if company else "Dear Hiring Team,")
+        lines.append("")
+        lines.append(f"I am writing to express my interest in the {title} role.")
+        if cv_snippet:
+            lines.append("")
+            lines.append("Key highlights from my background:")
+            lines.append(cv_snippet)
+        lines.append("")
+        lines.append("I believe my experience and skills align with the requirements and I would welcome the opportunity to discuss further.")
+        lines.append("")
+        lines.append("Sincerely,")
+        lines.append("")
+        lines.append("Your Name")
+        return "\n".join(lines)
+
+    def generate_and_save(self, job: Dict, row_number: int, output_dir: Path) -> str:
+        text = self.generate_text(job, job.get("cv_snippet"))
+        FileUtils.ensure_dir(output_dir)
+        safe_title = FileUtils.sanitize_filename(job.get("title", "untitled"))
+        filename = f"{row_number:04d}_{safe_title}.docx"
+        path = output_dir / filename
+        return FileUtils.save_docx(text, path)

@@ -1,79 +1,57 @@
-from urllib.parse import quote
+class JobScorer:
+    def __init__(self, preferences: list[int]):
+        self.preferences = preferences
 
-VISA_KEYWORDS = [
-    "visa sponsorship", "h1b", "work visa", "sponsor visa",
-    "immigration support", "work authorization", "visa support"
-]
-SPONSOR_LOCATIONS = [
-    "united states", "usa", "canada", "germany", "netherlands",
-    "ireland", "australia", "uk", "singapore"
-]
+    def _skill_match_score(self, job, skills):
+        job_desc = (job.get("description") or "").lower()
+        matches = sum(1 for skill in skills if skill.lower() in job_desc)
+        return matches * 10
 
-def has_visa_indicators(job):
-    text = " ".join(str(job.get(field, "")) for field in ['description', 'title', 'company_name']).lower()
-    for keyword in VISA_KEYWORDS:
-        if keyword in text:
-            return True, keyword
-    return False, None
+    def _visa_sponsorship_score(self, job):
+        text = (job.get("description") or "").lower()
+        if "visa sponsorship" in text or "work visa" in text:
+            return 100
+        return 0
 
-def is_sponsor_friendly(location):
-    if not location:
-        return False
-    location_lower = location.lower()
-    return any(country in location_lower for country in SPONSOR_LOCATIONS)
+    def _location_score(self, job):
+        location = (job.get("location") or "").lower()
+        preferred_location = "united kingdom"
+        return 75 if preferred_location in location else 0
 
-def calculate_score(job, skills, preferences):
-    score = 0
-    reasons = []
-    text = (job.get('description', '') + " " + job.get('title', '')).lower()
-    skill_matches = sum(1 for skill in skills if skill.lower() in text)
-    if skill_matches > 0:
-        score += skill_matches * 10
-        reasons.append(f"{skill_matches} skill matches")
+    def _remote_score(self, job):
+        text = (job.get("description") or "").lower()
+        if "remote" in text or "work from home" in text:
+            return 50
+        return 0
 
-    if preferences.get('visa_priority', True):
-        has_visa, keyword = has_visa_indicators(job)
-        if has_visa:
-            score += 100
-            reasons.append(f"Visa sponsorship: {keyword}")
-        elif is_sponsor_friendly(job.get('location')):
-            score += 50
-            reasons.append("Sponsor-friendly location")
+    def _salary_score(self, job):
+        salary = job.get("salary")
+        if not salary:
+            return 0
+        try:
+            value = int("".join(filter(str.isdigit, str(salary))))
+            if value > 60000:
+                return 40
+        except ValueError:
+            pass
+        return 0
 
-    if preferences.get('target_countries'):
-        location = job.get('location', '').lower()
-        for country in preferences['target_countries']:
-            if country in location:
-                score += 75
-                reasons.append(f"Target country: {country}")
-                break
+    def score_jobs(self, jobs: list[dict], skills: list[str]) -> list[dict]:
+        scored = []
+        for job in jobs:
+            score = 0
+            if 1 in self.preferences:
+                score += self._skill_match_score(job, skills)
+            if 2 in self.preferences:
+                score += self._visa_sponsorship_score(job)
+            if 3 in self.preferences:
+                score += self._location_score(job)
+            if 4 in self.preferences:
+                score += self._remote_score(job)
+            if 5 in self.preferences:
+                score += self._salary_score(job)
 
-    if preferences.get('remote_only'):
-        if any(term in text for term in ['remote', 'work from home']):
-            score += 30
-            reasons.append("Remote work")
+            job["score"] = score
+            scored.append(job)
 
-    return score, reasons
-
-def format_job(job, query, score, reasons):
-    has_visa, _ = has_visa_indicators(job)
-    visa_status = ("Yes" if has_visa else "Maybe" if is_sponsor_friendly(job.get('location')) else "Unknown")
-    desc = job.get('description', '')
-    short_desc = (desc[:500] + "...") if len(desc) > 500 else desc
-    company = job.get('company_name', '') or 'Not specified'
-    app_link = (job.get('apply_options', [{}])[0].get('link') if job.get('apply_options') else job.get('link')) or 'Not available'
-    return {
-        "Search Query": query,
-        "Relevance Score": score,
-        "Score Reasons": "; ".join(reasons),
-        "Job Title": job.get("title", "Not specified"),
-        "Company": company,
-        "Location": job.get("location", "Not specified"),
-        "Salary": job.get("detected_extensions", {}).get("salary", "Not specified"),
-        "Job Description": short_desc,
-        "Application Link": app_link,
-        "Visa Sponsorship Mentioned": visa_status,
-        "Company Glassdoor": f"https://www.glassdoor.com/Reviews/company-reviews.htm?typedKeyword={quote(company)}" if company else "Not available",
-        "Application Status": "Not Applied",
-        "Cover Letter Generated": "No"
-    }
+        return sorted(scored, key=lambda j: j["score"], reverse=True)

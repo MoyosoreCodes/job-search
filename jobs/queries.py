@@ -1,29 +1,24 @@
-import requests
+from typing import List
 
-_session = requests.Session()
-_session.headers.update({'User-Agent': 'job-searcher/1.0'})
-
-def search_serpapi(api_key: str, query: str, num: int = 20):
-    params = {"engine": "google_jobs", "q": query, "api_key": api_key, "num": num}
-    try:
-        r = _session.get('https://serpapi.com/search', params=params, timeout=20)
-        if r.status_code == 200:
-            return r.json().get('jobs_results', [])
-    except requests.RequestException:
-        pass
-    return []
-
-def generate_queries(skills, preferences):
-    queries = []
-    top_skills = skills[:5]
-    for skill in top_skills:
-        queries.append(skill)
-        if preferences.get('visa_priority', True):
-            queries.append(f"{skill} visa sponsorship")
-            queries.append(f"{skill} h1b")
-    if preferences.get('target_countries'):
-        for country in preferences['target_countries'][:2]:
-            queries.append(f"software developer {country}")
-    if preferences.get('remote_only'):
-        queries.extend(["remote software developer", "remote backend developer"])
-    return queries[:10]
+class QueryBuilder:
+    def build(self, skills: List[str], target_country: str = "", include_remote: bool = True) -> List[str]:
+        base = ["visa sponsorship", "work visa", "sponsor visa", "relocation support"]
+        core = skills[:8] if skills else []
+        queries = []
+        for b in base:
+            if core:
+                queries.append(f"{b} " + " ".join(core))
+            else:
+                queries.append(b)
+        if target_country:
+            queries = [q + f" {target_country}" for q in queries]
+        if include_remote:
+            queries.extend([q + " remote" for q in queries])
+        dedup = []
+        seen = set()
+        for q in queries:
+            k = q.lower().strip()
+            if k not in seen:
+                seen.add(k)
+                dedup.append(q)
+        return dedup[:20]
