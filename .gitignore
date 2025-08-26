@@ -1,0 +1,9 @@
+*.csv# ignore CSV files
+*.csv
+*.CSV
+
+*.xlsx# ignore CSV files
+*.xlsx
+*.XLSX
+
+getDevJob.py
