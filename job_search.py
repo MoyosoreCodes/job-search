@@ -466,21 +466,31 @@ def main():
     if not cv_text:
         return
     
-    # Get skills section name from user
-    skills_section_name = get_skills_section_from_user()
+    # Ask user for skills input method
+    print("\n=== SKILLS INPUT METHOD ===")
+    use_resume = input("Do you want to extract skills from your resume? (y/n, default: y): ").strip().lower()
     
-    # Extract skills from the specified section
-    skills_from_cv = extract_skills_from_specified_section(cv_text, skills_section_name)
-    
-    if not skills_from_cv:
-        print("❌ No skills could be extracted. Please check your CV format or section name.")
-        return
-    
-    # Validate extracted skills with user
-    skills_from_cv = validate_extracted_skills(skills_from_cv)
-    if not skills_from_cv:
-        print("No valid skills confirmed. Exiting...")
-        return
+    if use_resume in ['n', 'no']:
+        # Manual skills input
+        print("\nEnter your skills (comma-separated):")
+        manual_skills = input().strip()
+        if not manual_skills:
+            print("❌ No skills provided. Exiting...")
+            return
+        skills_from_cv = [skill.strip() for skill in manual_skills.split(',') if skill.strip()]
+    else:
+        # Extract from resume
+        skills_section_name = get_skills_section_from_user()
+        skills_from_cv = extract_skills_from_specified_section(cv_text, skills_section_name)
+        
+        if not skills_from_cv:
+            print("❌ No skills could be extracted. Please check your CV format or section name.")
+            return
+        
+        skills_from_cv = validate_extracted_skills(skills_from_cv)
+        if not skills_from_cv:
+            print("No valid skills confirmed. Exiting...")
+            return
     
     # Get user preferences
     preferences = get_user_preferences()
