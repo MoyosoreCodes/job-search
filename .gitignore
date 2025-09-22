@@ -8,3 +8,12 @@
 
 getDevJob.py
 .env
+.venv
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Build artifacts
+build/
+dist/
