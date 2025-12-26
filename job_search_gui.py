@@ -1,5 +1,3 @@
-
-
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 import job_search  # Import the original job search logic
@@ -11,6 +9,8 @@ import requests
 import sys
 import webbrowser
 import docx
+from tkPDFViewer import tkPDFViewer
+from docx2pdf import convert
 
 def extract_text_from_docx(docx_path):
     """Extracts text from a DOCX file."""
@@ -45,22 +45,22 @@ class JobSearchGUI(tk.Tk):
 
         # --- Create Frames for each step ---
         self.config_frame = ttk.Frame(self.notebook, padding="10")
-        self.skills_frame = ttk.Frame(self.notebook, padding="10")
         self.prefs_frame = ttk.Frame(self.notebook, padding="10")
-        self.results_frame = ttk.Frame(self.notebook, padding="10")
         self.cv_preview_frame = ttk.Frame(self.notebook, padding="10")
+        self.skills_frame = ttk.Frame(self.notebook, padding="10")
+        self.results_frame = ttk.Frame(self.notebook, padding="10")
 
         self.notebook.add(self.config_frame, text="Configuration")
+        self.notebook.add(self.prefs_frame, text="Preferences")
         self.notebook.add(self.cv_preview_frame, text="CV Preview")
         self.notebook.add(self.skills_frame, text="Skills")
-        self.notebook.add(self.prefs_frame, text="Preferences")
         self.notebook.add(self.results_frame, text="Results")
 
         # --- Populate each frame ---
         self.create_config_widgets()
+        self.create_prefs_widgets()
         self.create_cv_preview_widgets()
         self.create_skills_widgets()
-        self.create_prefs_widgets()
         self.create_results_widgets()
 
         # --- Navigation Buttons ---
@@ -70,6 +70,10 @@ class JobSearchGUI(tk.Tk):
         self.back_button.pack(side="left")
         self.next_button = ttk.Button(nav_frame, text="Next", command=self.next_step)
         self.next_button.pack(side="right")
+        
+        # --- Status Bar ---
+        self.status_bar = ttk.Label(self, text="Ready", relief=tk.SUNKEN, anchor=tk.W)
+        self.status_bar.grid(row=2, column=0, sticky=(tk.W, tk.E))
 
         self.all_jobs = []
         self.load_config()
@@ -109,23 +113,6 @@ class JobSearchGUI(tk.Tk):
         self.output_format_combobox.grid(row=3, column=1, sticky=(tk.W, tk.E), pady=2)
         self.output_format_combobox.set("Excel")
 
-    def create_cv_preview_widgets(self):
-        cv_preview_label = ttk.Label(self.cv_preview_frame, text="CV Preview:")
-        cv_preview_label.grid(row=0, column=0, sticky=tk.W, pady=2)
-
-        self.cv_preview_text = tk.Text(self.cv_preview_frame, height=25, width=90)
-        self.cv_preview_text.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-
-    def create_skills_widgets(self):
-        skills_label = ttk.Label(self.skills_frame, text="Extracted Skills (edit if necessary):")
-        skills_label.grid(row=0, column=0, sticky=tk.W, pady=2)
-
-        self.skills_text = tk.Text(self.skills_frame, height=20, width=90)
-        self.skills_text.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        
-        extract_button = ttk.Button(self.skills_frame, text="Extract Skills", command=self.extract_skills)
-        extract_button.grid(row=2, column=0, pady=10)
-
     def create_prefs_widgets(self):
         prefs_frame = ttk.LabelFrame(self.prefs_frame, text="Preferences", padding="10")
         prefs_frame.grid(row=0, column=0, columnspan=2, sticky=(tk.W, tk.E))
@@ -137,9 +124,11 @@ class JobSearchGUI(tk.Tk):
         self.job_title_entry.grid(row=0, column=1, sticky=(tk.W, tk.E), pady=2)
 
         # Location
-        ttk.Label(prefs_frame, text="Location:").grid(row=1, column=0, sticky=tk.W, pady=2)
-        self.location_combobox = ttk.Combobox(prefs_frame, values=job_search.COUNTRIES)
-        self.location_combobox.grid(row=1, column=1, sticky=(tk.W, tk.E), pady=2)
+        ttk.Label(prefs_frame, text="Location(s):").grid(row=1, column=0, sticky=tk.W, pady=2)
+        self.location_listbox = tk.Listbox(prefs_frame, selectmode=tk.MULTIPLE, height=5)
+        for country in job_search.COUNTRIES:
+            self.location_listbox.insert(tk.END, country)
+        self.location_listbox.grid(row=1, column=1, sticky=(tk.W, tk.E), pady=2)
 
         # Skills Section
         ttk.Label(prefs_frame, text="Skills Section Name:").grid(row=2, column=0, sticky=tk.W, pady=2)
@@ -157,6 +146,23 @@ class JobSearchGUI(tk.Tk):
         ttk.Checkbutton(priorities_frame, text="Visa Sponsorship", variable=self.visa_priority_var).grid(row=0, column=0, sticky=tk.W)
         ttk.Checkbutton(priorities_frame, text="Remote Work", variable=self.remote_priority_var).grid(row=0, column=1, sticky=tk.W)
 
+    def create_cv_preview_widgets(self):
+        cv_preview_label = ttk.Label(self.cv_preview_frame, text="CV Preview:")
+        cv_preview_label.grid(row=0, column=0, sticky=tk.W, pady=2)
+
+        self.cv_preview_text = tk.Text(self.cv_preview_frame, height=25, width=90)
+        self.cv_preview_text.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+
+    def create_skills_widgets(self):
+        skills_label = ttk.Label(self.skills_frame, text="Extracted Skills (edit if necessary):")
+        skills_label.grid(row=0, column=0, sticky=tk.W, pady=2)
+
+        self.skills_text = tk.Text(self.skills_frame, height=20, width=90)
+        self.skills_text.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        extract_button = ttk.Button(self.skills_frame, text="Extract Skills", command=self.extract_skills)
+        extract_button.grid(row=2, column=0, pady=10)
+
     def create_results_widgets(self):
         results_frame = ttk.LabelFrame(self.results_frame, text="Log and Results", padding="10")
         results_frame.grid(row=0, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S))
@@ -171,8 +177,11 @@ class JobSearchGUI(tk.Tk):
         self.results_text.configure(yscrollcommand=scrollbar.set)
         scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
         
+        self.progressbar = ttk.Progressbar(self.results_frame, orient="horizontal", length=300, mode="determinate")
+        self.progressbar.grid(row=1, column=0, pady=10)
+        
         self.save_button = ttk.Button(self.results_frame, text="Save Results", command=self.save_results, state="disabled")
-        self.save_button.grid(row=1, column=0, pady=10)
+        self.save_button.grid(row=2, column=0, pady=10)
 
     def next_step(self):
         current_tab_index = self.notebook.index(self.notebook.select())
@@ -180,11 +189,11 @@ class JobSearchGUI(tk.Tk):
         if current_tab_index == 0: # Configuration
             self.save_config()
             self.notebook.select(current_tab_index + 1)
-        elif current_tab_index == 1: # CV Preview
+        elif current_tab_index == 1: # Preferences
             self.notebook.select(current_tab_index + 1)
-        elif current_tab_index == 2: # Skills
+        elif current_tab_index == 2: # CV Preview
             self.notebook.select(current_tab_index + 1)
-        elif current_tab_index == 3: # Preferences
+        elif current_tab_index == 3: # Skills
             self.run_search()
             self.notebook.select(current_tab_index + 1)
 
@@ -220,16 +229,22 @@ class JobSearchGUI(tk.Tk):
                 self.api_key_entry.insert(0, config.get("api_key", ""))
                 self.cv_path_entry.insert(0, config.get("cv_path", ""))
                 self.job_title_entry.insert(0, config.get("job_title", ""))
-                self.location_combobox.set(config.get("location", ""))
+                
+                locations = config.get("location", [])
+                for i, country in enumerate(job_search.COUNTRIES):
+                    if country in locations:
+                        self.location_listbox.selection_set(i)
+
                 self.output_folder_entry.insert(0, config.get("output_folder", ""))
                 self.output_format_combobox.set(config.get("output_format", "Excel"))
 
     def save_config(self):
+        selected_locations = [self.location_listbox.get(i) for i in self.location_listbox.curselection()]
         config = {
             "api_key": self.api_key_entry.get().strip(),
             "cv_path": self.cv_path_entry.get().strip(),
             "job_title": self.job_title_entry.get().strip(),
-            "location": self.location_combobox.get().strip(),
+            "location": selected_locations,
             "output_folder": self.output_folder_entry.get().strip(),
             "output_format": self.output_format_combobox.get().strip(),
         }
@@ -256,20 +271,17 @@ class JobSearchGUI(tk.Tk):
             return
 
         if cv_path.endswith(".pdf"):
-            cv_text = job_search.extract_text_from_pdf(cv_path)
+            v1 = tkPDFViewer.ShowPdf()
+            v1.pdf_view(self, pdf_location=cv_path, width=50, height=100)
         elif cv_path.endswith(".docx"):
-            cv_text = extract_text_from_docx(cv_path)
+            pdf_path = "temp_cv.pdf"
+            convert(cv_path, pdf_path)
+            v1 = tkPDFViewer.ShowPdf()
+            v1.pdf_view(self, pdf_location=pdf_path, width=50, height=100)
+            os.remove(pdf_path)
         else:
             messagebox.showerror("Error", "Unsupported file format. Please select a PDF or DOCX file.")
             return
-
-        if not cv_text:
-            self.cv_preview_text.delete(1.0, tk.END)
-            self.cv_preview_text.insert(tk.END, "Failed to extract text from CV.")
-            return
-
-        self.cv_preview_text.delete(1.0, tk.END)
-        self.cv_preview_text.insert(tk.END, cv_text)
 
     def extract_skills(self):
         cv_path = self.cv_path_entry.get().strip()
@@ -303,18 +315,19 @@ class JobSearchGUI(tk.Tk):
         self.results_text.delete(1.0, tk.END)
         self.results_text.insert(tk.END, "Starting job search...\n")
         self.update_idletasks()
+        self.progressbar["value"] = 0
 
         prioritized_skills = self.skills_text.get(1.0, tk.END).strip().split("\n")
 
         api_key = self.api_key_entry.get().strip()
         user_job_title = self.job_title_entry.get().strip()
-        location = self.location_combobox.get().strip()
+        locations = [self.location_listbox.get(i) for i in self.location_listbox.curselection()]
 
         try:
             preferences = {
                 "visa_priority": self.visa_priority_var.get(),
                 "remote_only": self.remote_priority_var.get(),
-                "target_countries": [location] if location else [],
+                "target_countries": locations,
                 "skill_focus": prioritized_skills
             }
 
@@ -323,11 +336,16 @@ class JobSearchGUI(tk.Tk):
                 search_queries.insert(0, user_job_title)
 
             seen_jobs = set()
+            
+            self.progressbar["maximum"] = len(search_queries)
 
-            for query in search_queries:
+            for i, query in enumerate(search_queries):
+                self.status_bar.config(text=f"Searching for: {query}")
                 self.results_text.insert(tk.END, f"Searching for: {query}\n")
                 self.update_idletasks()
-                jobs_raw = job_search.search_jobs_on_serpapi(query, api_key, location_filter=location)
+                jobs_raw = job_search.search_jobs_on_serpapi(query, api_key, location_filter=locations)
+                self.progressbar["value"] = i + 1
+                self.update_idletasks()
 
                 for job in jobs_raw:
                     job_id = f"{job.get('title', '')}-{job.get('company_name', '')}-{job.get('location', '')}"
@@ -342,6 +360,7 @@ class JobSearchGUI(tk.Tk):
 
             if not self.all_jobs:
                 self.results_text.insert(tk.END, "No matching jobs found.\n")
+                self.status_bar.config(text="No matching jobs found.")
                 return
 
             # Display results
@@ -353,11 +372,13 @@ class JobSearchGUI(tk.Tk):
                 self.results_text.insert(tk.END, f"Score: {job['Relevance Score']} ({job['Score Reasons']})\n\n")
 
             self.save_button.config(state="normal")
+            self.status_bar.config(text=f"Job search complete! Found {len(self.all_jobs)} relevant jobs.")
             messagebox.showinfo("Success", f"Job search complete! Found {len(self.all_jobs)} relevant jobs.")
 
         except Exception as e:
             messagebox.showerror("Error", f"An error occurred: {e}")
             self.results_text.insert(tk.END, f"An error occurred: {e}\n")
+            self.status_bar.config(text="Error occurred.")
 
     def save_results(self):
         if not self.all_jobs:
@@ -387,8 +408,10 @@ class JobSearchGUI(tk.Tk):
                 df.to_csv(output_path, index=False)
 
             messagebox.showinfo("Save Successful", f"Results saved to {output_path}")
+            self.status_bar.config(text=f"Results saved to {output_path}")
         except Exception as e:
             messagebox.showerror("Save Error", f"An error occurred while saving: {e}")
+            self.status_bar.config(text="Error saving results.")
 
     def check_for_updates(self):
         try:
