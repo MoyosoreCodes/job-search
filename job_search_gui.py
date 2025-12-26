@@ -81,8 +81,11 @@ class JobSearchGUI(tk.Tk):
         self.save_button = ttk.Button(control_frame, text="Save Results", command=self.save_results, state="disabled")
         self.save_button.grid(row=0, column=1, padx=5)
 
-        self.preview_button = ttk.Button(control_frame, text="Preview CV", command=self.preview_cv, state="disabled")
-        self.preview_button.grid(row=0, column=2, padx=5)
+        self.preview_cv_button = ttk.Button(control_frame, text="Preview CV", command=self.preview_cv, state="disabled")
+        self.preview_cv_button.grid(row=0, column=2, padx=5)
+
+        self.preview_skills_button = ttk.Button(control_frame, text="Preview Skills", command=self.preview_skills, state="disabled")
+        self.preview_skills_button.grid(row=0, column=3, padx=5)
 
         # --- Results/Log Frame ---
         results_frame = ttk.LabelFrame(main_frame, text="Log and Results", padding="10")
@@ -114,7 +117,8 @@ class JobSearchGUI(tk.Tk):
                 self.job_title_entry.insert(0, config.get("job_title", ""))
                 self.location_combobox.set(config.get("location", ""))
                 if self.cv_path_entry.get():
-                    self.preview_button.config(state="normal")
+                    self.preview_cv_button.config(state="normal")
+                    self.preview_skills_button.config(state="normal")
 
     def save_config(self):
         config = {
@@ -150,7 +154,34 @@ class JobSearchGUI(tk.Tk):
         if file_path:
             self.cv_path_entry.delete(0, tk.END)
             self.cv_path_entry.insert(0, file_path)
-            self.preview_button.config(state="normal")
+            self.preview_cv_button.config(state="normal")
+            self.preview_skills_button.config(state="normal")
+
+    def preview_skills(self):
+        cv_path = self.cv_path_entry.get().strip()
+        if not cv_path or not os.path.exists(cv_path):
+            messagebox.showerror("Error", "Please provide a valid CV path.")
+            return
+
+        skills_section_name = self.skills_section_entry.get().strip()
+        cv_text = job_search.extract_text_from_pdf(cv_path)
+        if not cv_text:
+            messagebox.showerror("Error", "Failed to extract text from CV.")
+            return
+
+        skills = job_search.extract_skills_from_specified_section(cv_text, skills_section_name)
+        if not skills:
+            messagebox.showinfo("No Skills Found", "No skills were found in the specified section of your CV.")
+            return
+
+        preview_window = tk.Toplevel(self)
+        preview_window.title("Skills Preview")
+        preview_window.geometry("400x300")
+
+        text_widget = tk.Text(preview_window, wrap=tk.WORD)
+        text_widget.pack(expand=True, fill=tk.BOTH)
+        text_widget.insert(tk.END, "\n".join(skills))
+        text_widget.config(state="disabled")
 
     def preview_cv(self):
         cv_path = self.cv_path_entry.get().strip()
