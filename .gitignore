@@ -1,0 +1,7 @@
+# Ignore everything by default
+*
+
+# Allow only the distributable executable and this file
+!.gitignore
+!dist/
+!dist/AI Job Search.exe
