@@ -1,7 +1,5 @@
-# Ignore everything by default
+# Ignore everything – release assets are distributed via GitHub Releases
 *
 
-# Allow only the distributable executable and this file
+# Allow only this file
 !.gitignore
-!dist/
-!dist/AI Job Search.exe
