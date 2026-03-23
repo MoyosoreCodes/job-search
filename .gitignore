@@ -1,5 +1,31 @@
-# Ignore everything – release assets are distributed via GitHub Releases
-*
+# Build artifacts
+dist/
+build/
+__pycache__/
+*.py[cod]
+*.pyo
 
-# Allow only this file
-!.gitignore
+# Sensitive â€” never commit
+config.json
+.env
+.env.*
+.claude/
+
+# Output files
+*.xlsx
+*.csv
+job_search_results/
+
+# Python packaging
+*.egg-info/
+.eggs/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Logs / temp
+*.log
+commit_message.txt
