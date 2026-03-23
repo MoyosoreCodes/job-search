@@ -1,6 +1,6 @@
 """Shared constants: colours, version, and country list."""
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 VERSION_URL = (
     "https://gist.githubusercontent.com/Moyo-x/"
     "7144732583323615545bde54ed69638a/raw/version.json"

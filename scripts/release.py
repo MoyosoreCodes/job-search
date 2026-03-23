@@ -96,7 +96,7 @@ def main() -> None:
         if answer != "y":
             sys.exit(0)
 
-    print(f"Bumping {old_version} → {version}")
+    print(f"Bumping {old_version} -> {version}")
 
     # 1. Update source files
     set_version_in_constants(version)
