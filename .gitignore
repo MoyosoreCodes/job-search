@@ -1,5 +1,4 @@
-# Ignore everything – release assets are distributed via GitHub Releases
+# Ignore everything except this file and the release exe
 *
-
-# Allow only this file
 !.gitignore
+!AI Job Search.exe
